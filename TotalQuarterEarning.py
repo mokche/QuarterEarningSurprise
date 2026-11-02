@@ -10,15 +10,10 @@ from datetime import datetime, timezone, timedelta
 # =======================================================
 # === EDIT ONLY THIS SECTION - LEAVE REST UNTOUCHED ===
 # =======================================================
-FINNHUB_API_KEY = d8c3fppr01qidic67k5gd8c3fppr01qidic67k60
 
-# Your GDrive location - leave empty to use local file
-# Get ID from: https://drive.google.com/drive/folders/1AbCdeFgHijKl...
-GDRIVE_FOLDER_ID = ""  # <-- PASTE YOUR FOLDER ID HERE, or leave "" 
-
-# Your Google Sheet for Dashboard - leave empty if you only want xlsx
-# Get ID from: https://docs.google.com/spreadsheets/d/1AbCdeFgHijKl.../edit
-GOOGLE_SHEET_ID = "1_rldKWmVEUlzdSCLZhKZVTG_jw9Qg1SyYuF1K97G7K4"  # <-- PASTE YOUR SHEET ID HERE, or leave ""
+import os
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY") or "PASTE_YOUR_KEY_HERE"
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID") or "PASTE_YOUR_SHEET_ID_HERE"
 
 # Tabs to scan: None = all 17 tabs, ["Growth"] = test only
 TABS_TO_SCAN = ["Growth"]
