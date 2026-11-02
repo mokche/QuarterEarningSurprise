@@ -1,32 +1,28 @@
-# TotalQuarterEarning.py v3.0 - Reuses your old quarterly.py auth
-import os, json, time, re, threading, requests
+# TotalQuarterEarning.py v4.0 - GitHub-safe, no YF ban
+import os, json, time, re, threading, requests, random
 os.environ["YFINANCE_NO_CACHE"] = "1"
 import yfinance as yf, openpyxl, gspread
 from datetime import datetime, timezone, timedelta
 
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY") or os.getenv("FINHUB_API_KEY") or ""
-GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID") or os.getenv("SHEET_ID") or "PASTE_YOUR_Watchlist 1.9_ID_HERE"
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY") or ""
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID") or ""
 SGT = timezone(timedelta(hours=8))
 FH_BASE = "https://finnhub.io/api/v1"
 
-# === YOUR OLD WORKING AUTH - NO CHANGE ===
+# === SET THIS FOR TEST ===
+TEST_MODE = True  # True = only Growth tab, False = all 17 tabs
+TEST_TAB_NAME = "Growth 352"  # change to your Growth tab exact name, e.g. "Growth" or "Growth 352"
+# =========================
+
 def get_gc():
     secret = os.environ.get("GOOGLE_SERVICE_ACCOUNT")
-    if not secret:
-        raise ValueError("GOOGLE_SERVICE_ACCOUNT secret missing")
-    return gspread.service_account_from_dict(
-        json.loads(secret),
-        scopes=[
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
-        ],
-    )
-# =========================================
+    if not secret: raise ValueError("GOOGLE_SERVICE_ACCOUNT missing")
+    return gspread.service_account_from_dict(json.loads(secret), scopes=["https://www.googleapis.com/auth/spreadsheets","https://www.googleapis.com/auth/drive"])
 
 def is_valid_ticker(v):
     if not v: return False
     s=str(v).strip().upper()
-    if len(s)<1 or len(s)>7 or s in ["TICKER","SYMBOL","PRICE","DATE","TIME"]: return False
+    if len(s)<1 or len(s)>7 or s in ["TICKER","SYMBOL","PRICE"]: return False
     return bool(re.match(r"^[A-Z]{1,5}([.-][A-Z]{1,2})?$", s))
 
 class Limiter:
@@ -36,42 +32,61 @@ class Limiter:
             now=time.monotonic(); at=max(now,self.nxt); self.nxt=at+self.iv
         d=at-time.monotonic()
         if d>0: time.sleep(d)
-lim=Limiter(55)
+lim=Limiter(50)
 
 def fh_get(path, params):
     p=dict(params); p["token"]=FINNHUB_API_KEY
     lim.wait()
-    try:
-        r=requests.get(FH_BASE+path, params=p, timeout=20)
-        if r.status_code==200: return r.json()
-    except: pass
+    for _ in range(3):
+        try:
+            r=requests.get(FH_BASE+path, params=p, timeout=20)
+            if r.status_code==200: return r.json()
+            if r.status_code==429: time.sleep(5)
+        except: time.sleep(2)
     return None
 
 def get_tickers():
-    print(f"Reading Watchlist 1.9 ID: {GOOGLE_SHEET_ID[:15]}...")
+    print(f"TEST_MODE={TEST_MODE} TAB={TEST_TAB_NAME if TEST_MODE else 'ALL'}")
     gc = get_gc()
     sh = gc.open_by_key(GOOGLE_SHEET_ID)
-    print(f"Sheet title: {sh.title}")
     tickers=[]
     for ws in sh.worksheets():
-        if ws.title in ["Quarterly Data","Surprise Earning Data","Dashboard","DASHBOARD","Index"]: continue
-        if "Data (1.9)" in ws.title: continue
-        try:
-            col = ws.col_values(1)
-            for v in col[1:]:
-                if is_valid_ticker(v): tickers.append(str(v).strip().upper())
-        except: pass
+        title=ws.title
+        if TEST_MODE and title != TEST_TAB_NAME: continue
+        if not TEST_MODE and title in ["Quarterly Data","Surprise Earning Data","Dashboard","DASHBOARD","Index"]: continue
+        if not TEST_MODE and "Data (1.9)" in title: continue
+        print(f" Scanning {title}...")
+        col = ws.col_values(1)
+        for v in col[1:]:
+            if is_valid_ticker(v): tickers.append(str(v).strip().upper())
     tickers=sorted(set(tickers))
     print(f"Found {len(tickers)} tickers")
     return tickers
 
+def get_price_slow(ticker):
+    """Single ticker with retry - GitHub safe"""
+    for attempt in range(3):
+        try:
+            # Random delay to avoid ban
+            time.sleep(random.uniform(0.5, 1.5))
+            tk = yf.Ticker(ticker)
+            hist = tk.history(period="5d", auto_adjust=True)
+            if not hist.empty:
+                return float(hist['Close'].iloc[-1])
+        except Exception as e:
+            if "Rate limited" in str(e) or "Too Many" in str(e):
+                wait = 10 + attempt*10
+                print(f"  YF limited on {ticker}, wait {wait}s")
+                time.sleep(wait)
+            else:
+                time.sleep(1)
+    return None
+
 def main():
     start=time.time()
     tickers=get_tickers()
-    if not tickers:
-        print("Found 0 - check Sheet shared with service account email?")
-        return
-    print(f"Total: {len(tickers)} e.g. {tickers[:15]}")
+    if not tickers: return
+    print(f"Total: {len(tickers)} e.g. {tickers[:10]}")
 
     earnings={}
     for i,t in enumerate(tickers):
@@ -79,24 +94,16 @@ def main():
         if data and isinstance(data,list):
             valid=[x for x in data if x.get("actual") is not None]
             if valid: earnings[t]=sorted(valid, key=lambda x: x.get("period") or "", reverse=True)[0]
-        if i%50==0: print(f" {i}/{len(tickers)} OK:{len(earnings)}")
+        if i%20==0: print(f" Finnhub {i}/{len(tickers)} OK:{len(earnings)}")
 
+    print("Starting YFinance price fetch (slow mode to avoid ban)...")
     price_cache={}
-    for i in range(0,len(tickers),20):
-        chunk=tickers[i:i+20]
-        try:
-            df=yf.download(chunk, period="5d", threads=True, progress=False, auto_adjust=True, group_by='ticker')
-            if df is not None and not df.empty:
-                for c in chunk:
-                    try:
-                        if len(chunk)==1:
-                            last=df['Close'].dropna()
-                            if not last.empty: price_cache[c]=float(last.iloc[-1])
-                        elif c in df.columns.get_level_values(0):
-                            last=df[c]['Close'].dropna()
-                            if not last.empty: price_cache[c]=float(last.iloc[-1])
-                    except: pass
-        except: pass
+    for i,t in enumerate(tickers):
+        price = get_price_slow(t)
+        if price: price_cache[t]=price
+        if i%10==0: 
+            print(f" Price {i}/{len(tickers)} OK:{len(price_cache)}")
+            time.sleep(2)  # extra pause every 10
 
     now_sgt=datetime.now(SGT); now_utc=datetime.now(timezone.utc)
     elapsed=(time.time()-start)/60
@@ -118,14 +125,13 @@ def main():
 
     ws3=wb_out.create_sheet("Dashboard")
     ws3["A1"].value="RUN STATUS:"; ws3["B1"].value="COMPLETED"; ws3["C1"].value="COMPLETED"; ws3["D1"].value="COMPLETED"
-    ws3["A2"].value="DASHBOARD UPDATED:"; ws3["B2"].value="KEEP v5.2.1"; ws3["C2"].value=f"Merged: {now_utc.strftime('%Y-%m-%d %H:%M:%S (UTC)')}"
+    ws3["A2"].value="DASHBOARD UPDATED:"; ws3["C2"].value=f"Merged: {now_utc.strftime('%Y-%m-%d %H:%M:%S (UTC)')}"
     ws3["D2"].value=f"Merged Surprise: {now_utc.strftime('%Y-%m-%d %H:%M:%S (UTC)')}"
-    ws3["A3"].value="SCRIPT VERSION:"; ws3["C3"].value="TotalEarning v1.0"; ws3["D3"].value="TotalEarning Surprise"
     ws3["A4"].value="TOTAL RUN TIME:"; ws3["C4"].value=f"{elapsed:.1f} min | OK:{len(earnings)} | Price:{len(price_cache)}"
-    ws3["D4"].value=f"{len(tickers)} tickers | {len(earnings)} matched"
+    ws3["D4"].value=f"{len(tickers)} tickers"
 
     out=f"Watchlist_MERGED_FULL_{now_sgt.strftime('%Y%m%d_%H%M')}.xlsx"
     wb_out.save(out)
-    print(f"\n✅ Saved {out} - OK:{len(earnings)}/{len(tickers)}")
+    print(f"\n✅ Saved {out} - {elapsed:.1f} min - OK:{len(earnings)}/{len(tickers)} Price:{len(price_cache)}")
 
 if __name__=="__main__": main()
