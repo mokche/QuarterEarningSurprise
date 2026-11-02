@@ -37,7 +37,7 @@ jobs:
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
         run: |
-          python merged_to_gdrive.py
+          python TotalQuarterEarning.py
 
       - name: Upload result
         uses: actions/upload-artifact@v4
