@@ -11,7 +11,7 @@ FH_BASE = "https://finnhub.io/api/v1"
 
 # === SET THIS FOR TEST ===
 TEST_MODE = True  # True = only Growth tab, False = all 17 tabs
-TEST_TAB_NAME = "Growth 352"  # change to your Growth tab exact name, e.g. "Growth" or "Growth 352"
+TEST_TAB_NAME = "Growth"  # change to your Growth tab exact name, e.g. "Growth" or "Growth 352"
 # =========================
 
 def get_gc():
