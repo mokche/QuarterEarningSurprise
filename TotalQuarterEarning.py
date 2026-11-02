@@ -18,10 +18,10 @@ GDRIVE_FOLDER_ID = ""  # <-- PASTE YOUR FOLDER ID HERE, or leave ""
 
 # Your Google Sheet for Dashboard - leave empty if you only want xlsx
 # Get ID from: https://docs.google.com/spreadsheets/d/1AbCdeFgHijKl.../edit
-GOOGLE_SHEET_ID = ""  # <-- PASTE YOUR SHEET ID HERE, or leave ""
+GOOGLE_SHEET_ID = "1_rldKWmVEUlzdSCLZhKZVTG_jw9Qg1SyYuF1K97G7K4"  # <-- PASTE YOUR SHEET ID HERE, or leave ""
 
 # Tabs to scan: None = all 17 tabs, ["Growth"] = test only
-TABS_TO_SCAN = None
+TABS_TO_SCAN = ["Growth"]
 # =======================================================
 
 SGT = timezone(timedelta(hours=8))
