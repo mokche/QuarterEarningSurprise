@@ -17,7 +17,7 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-        run: python TotalQuarterEarning.py
+        run: python TotalQuarterEarnings.py
       - uses: actions/upload-artifact@v4
         with:
           name: merged-xlsx
