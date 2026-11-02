@@ -1,0 +1,47 @@
+```yaml
+name: TotalEarning Daily
+
+on:
+  schedule:
+    # Runs daily 10:00 UTC = 18:00 SGT
+    - cron: '0 10 * * *'
+  workflow_dispatch:  # Allow manual run button
+
+jobs:
+  run-merged:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: |
+          pip install -r requirements.txt
+
+      - name: Check for Watchlist.xlsx
+        run: |
+          if [ ! -f "Watchlist.xlsx" ]; then
+            echo "Watchlist.xlsx not found - please upload to repo or use Colab"
+            # Create dummy to test import
+            python -c "import openpyxl; wb=openpyxl.Workbook(); ws=wb.active; ws['A1']='Ticker'; ws['A2']='AAPL'; wb.save('Watchlist.xlsx')"
+          fi
+
+      - name: Run Merged
+        env:
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        run: |
+          python merged_to_gdrive.py
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-xlsx
+          path: Watchlist_MERGED_FULL_*.xlsx
+          if-no-files-found: warn
