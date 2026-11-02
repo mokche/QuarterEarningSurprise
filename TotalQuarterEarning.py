@@ -1,13 +1,27 @@
-# TotalQuarterEarning.py v2.0 - GitHub Actions ready
+# TotalQuarterEarning.py v3.0 - Reuses your old quarterly.py auth
 import os, json, time, re, threading, requests
 os.environ["YFINANCE_NO_CACHE"] = "1"
-import yfinance as yf, openpyxl
+import yfinance as yf, openpyxl, gspread
 from datetime import datetime, timezone, timedelta
 
-FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY") or "PASTE_KEY_HERE"
-GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID") or "PASTE_SHEET_ID_HERE"
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY") or os.getenv("FINHUB_API_KEY") or ""
+GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID") or os.getenv("SHEET_ID") or "PASTE_YOUR_Watchlist 1.9_ID_HERE"
 SGT = timezone(timedelta(hours=8))
 FH_BASE = "https://finnhub.io/api/v1"
+
+# === YOUR OLD WORKING AUTH - NO CHANGE ===
+def get_gc():
+    secret = os.environ.get("GOOGLE_SERVICE_ACCOUNT")
+    if not secret:
+        raise ValueError("GOOGLE_SERVICE_ACCOUNT secret missing")
+    return gspread.service_account_from_dict(
+        json.loads(secret),
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ],
+    )
+# =========================================
 
 def is_valid_ticker(v):
     if not v: return False
@@ -34,55 +48,30 @@ def fh_get(path, params):
     return None
 
 def get_tickers():
-    print(f"Reading Google Sheet: {GOOGLE_SHEET_ID[:10]}***")
-    # Try Service Account first (GitHub), then Colab
-    gc = None
-    try:
-        # GitHub path - GOOGLE_CREDENTIALS secret
-        creds_json = os.getenv("GOOGLE_CREDENTIALS")
-        if creds_json:
-            print("Using GOOGLE_CREDENTIALS from GitHub Secrets")
-            import gspread
-            from google.oauth2.service_account import Credentials
-            creds_dict = json.loads(creds_json)
-            scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly","https://www.googleapis.com/auth/drive.readonly"]
-            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-            gc = gspread.authorize(creds)
-        else:
-            # Colab fallback
-            from google.colab import auth
-            import gspread
-            auth.authenticate_user()
-            from google.auth import default
-            creds,_ = default()
-            gc = gspread.authorize(creds)
-    except Exception as e:
-        print(f"Auth failed: {e}")
-        return []
-
-    try:
-        sh = gc.open_by_key(GOOGLE_SHEET_ID)
-        tickers=[]
-        for ws in sh.worksheets():
-            if ws.title in ["Quarterly Data","Surprise Earning Data","Dashboard","DASHBOARD","Index","Sheet1"]: continue
-            if "Data (1.9)" in ws.title or "Dashboard" in ws.title: continue
+    print(f"Reading Watchlist 1.9 ID: {GOOGLE_SHEET_ID[:15]}...")
+    gc = get_gc()
+    sh = gc.open_by_key(GOOGLE_SHEET_ID)
+    print(f"Sheet title: {sh.title}")
+    tickers=[]
+    for ws in sh.worksheets():
+        if ws.title in ["Quarterly Data","Surprise Earning Data","Dashboard","DASHBOARD","Index"]: continue
+        if "Data (1.9)" in ws.title: continue
+        try:
             col = ws.col_values(1)
             for v in col[1:]:
                 if is_valid_ticker(v): tickers.append(str(v).strip().upper())
-        tickers=sorted(set(tickers))
-        print(f"Found {len(tickers)} tickers")
-        return tickers
-    except Exception as e:
-        print(f"Sheet read failed: {e}")
-        return []
+        except: pass
+    tickers=sorted(set(tickers))
+    print(f"Found {len(tickers)} tickers")
+    return tickers
 
 def main():
     start=time.time()
     tickers=get_tickers()
     if not tickers:
-        print("❌ 0 tickers - Did you share sheet with service account email?")
+        print("Found 0 - check Sheet shared with service account email?")
         return
-    print(f"Total: {len(tickers)} e.g. {tickers[:10]}")
+    print(f"Total: {len(tickers)} e.g. {tickers[:15]}")
 
     earnings={}
     for i,t in enumerate(tickers):
@@ -132,7 +121,7 @@ def main():
     ws3["A2"].value="DASHBOARD UPDATED:"; ws3["B2"].value="KEEP v5.2.1"; ws3["C2"].value=f"Merged: {now_utc.strftime('%Y-%m-%d %H:%M:%S (UTC)')}"
     ws3["D2"].value=f"Merged Surprise: {now_utc.strftime('%Y-%m-%d %H:%M:%S (UTC)')}"
     ws3["A3"].value="SCRIPT VERSION:"; ws3["C3"].value="TotalEarning v1.0"; ws3["D3"].value="TotalEarning Surprise"
-    ws3["A4"].value="TOTAL RUN TIME:"; ws3["C4"].value=f"{elapsed:.1f} min | OK:{len(earnings)} | Price:{len(price_cache)} | Failed:{len(tickers)-len(earnings)}"
+    ws3["A4"].value="TOTAL RUN TIME:"; ws3["C4"].value=f"{elapsed:.1f} min | OK:{len(earnings)} | Price:{len(price_cache)}"
     ws3["D4"].value=f"{len(tickers)} tickers | {len(earnings)} matched"
 
     out=f"Watchlist_MERGED_FULL_{now_sgt.strftime('%Y%m%d_%H%M')}.xlsx"
